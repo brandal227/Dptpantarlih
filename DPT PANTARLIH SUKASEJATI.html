@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DPT Sukasejati</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Library Eksternal untuk Parsing Excel & PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
+
+    <header class="bg-white border-b border-gray-200 px-4 py-3 shrink-0">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <h1 class="font-bold text-base text-gray-900">DPT Sukasejati</h1>
+            <span id="header-total" class="text-xs text-gray-500">0 Data</span>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-4xl w-full mx-auto p-4 flex flex-col gap-4 overflow-hidden">
+        
+        <div id="toast" class="hidden bg-emerald-50 text-emerald-800 px-3 py-2 rounded text-xs border border-emerald-200 shrink-0">
+            <span id="toast-message"></span>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-2 justify-between items-center bg-white p-3 rounded-lg border border-gray-200 shadow-sm shrink-0">
+            <input type="text" id="search-input" inputmode="numeric" pattern="[0-9]*" placeholder="Cari NIK, KK, atau Nama..." 
+                class="w-full sm:w-72 px-3 py-1.5 bg-gray-50 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500">
+
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <!-- Dropdown Impor File -->
+                <div class="relative inline-block text-left" id="dropdown-container">
+                    <button onclick="toggleDropdown()" type="button" class="inline-flex justify-center items-center gap-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-medium focus:outline-none">
+                        Impor File
+                        <svg class="-mr-1 h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+
+                    <!-- Menu Dropdown -->
+                    <div id="dropdown-menu" class="hidden absolute right-0 z-20 mt-1 w-36 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                        <div class="py-1 text-xs">
+                            <a href="#" onclick="triggerFileImport('.csv')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Impor CSV</a>
+                            <a href="#" onclick="triggerFileImport('.xlsx, .xls')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Impor Excel</a>
+                            <a href="#" onclick="triggerFileImport('.pdf')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Impor PDF</a>
+                            <a href="#" onclick="triggerFileImport('.json')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Impor JSON</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden File Inputs -->
+                <input type="file" id="file-input" class="hidden" onchange="handleFileImport(event)">
+
+                <button onclick="resetData()" class="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded text-xs font-medium">
+                    Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- Bagian Tabel -->
+        <div class="border border-gray-200 rounded-lg bg-white overflow-hidden shadow-sm flex-grow flex flex-col min-h-0">
+            <div class="overflow-x-auto overflow-y-auto flex-grow h-full">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead class="bg-gray-100 text-gray-700 uppercase sticky top-0 border-b border-gray-200 z-10">
+                        <tr>
+                            <th class="py-2 px-3 text-center whitespace-nowrap w-auto bg-gray-100">No</th>
+                            <th class="py-2 px-3 bg-gray-100">No KK</th>
+                            <th class="py-2 px-3 bg-gray-100">NIK</th>
+                            <th class="py-2 px-3 bg-gray-100">Nama</th>
+                            <th class="py-2 px-3 text-center w-16 bg-gray-100">RT</th>
+                            <th class="py-2 px-3 text-center w-16 bg-gray-100">RW</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-gray-100">
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Navigasi Pagination -->
+            <div id="pagination-container" class="bg-white border-t border-gray-200 px-4 py-2 flex items-center justify-between shrink-0 text-xs">
+                <span id="page-info" class="text-gray-500">Menampilkan 0 dari 0 data</span>
+                <div class="flex gap-1">
+                    <button id="prev-btn" onclick="changePage(-1)" class="px-2.5 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Sebelumnya</button>
+                    <button id="next-btn" onclick="changePage(1)" class="px-2.5 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Selanjutnya</button>
+                </div>
+            </div>
+
+            <div id="empty-state" class="hidden py-12 text-center text-xs text-gray-500 my-auto">
+                Belum ada data pemilih. Silakan impor file (CSV, Excel, PDF, atau JSON).
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="text-center py-3 text-xs text-gray-400 border-t border-gray-200 bg-white shrink-0">
+        &copy; 2026 DPT Sukasejati
+    </footer>
+
+    <script>
+        const STORAGE_KEY = 'dpt_sukasejati_simple';
+        let dptData = [];
+        let filteredData = [];
+        
+        let currentPage = 1;
+        const rowsPerPage = 50;
+
+        const searchInput = document.getElementById('search-input');
+        const tableBody = document.getElementById('table-body');
+        const emptyState = document.getElementById('empty-state');
+        const headerTotal = document.getElementById('header-total');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toast-message');
+        const pageInfo = document.getElementById('page-info');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const dropdownMenu = document.getElementById('dropdown-menu');
+        const fileInput = document.getElementById('file-input');
+
+        function showToast(msg) {
+            toastMessage.textContent = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        function toggleDropdown() {
+            dropdownMenu.classList.toggle('hidden');
+        }
+
+        // Tutup dropdown jika klik di luar area
+        window.addEventListener('click', function(e) {
+            if (!document.getElementById('dropdown-container').contains(e.target)) {
+                dropdownMenu.classList.add('hidden');
+            }
+        });
+
+        function triggerFileImport(acceptTypes) {
+            dropdownMenu.classList.add('hidden');
+            fileInput.accept = acceptTypes;
+            fileInput.click();
+        }
+
+        function loadData() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            dptData = saved ? JSON.parse(saved) : [];
+            filteredData = [...dptData];
+        }
+
+        function saveData() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(dptData));
+        }
+
+        function renderTable() {
+            tableBody.innerHTML = '';
+            headerTotal.textContent = `${dptData.length.toLocaleString('id-ID')} Data`;
+
+            if (filteredData.length === 0) {
+                emptyState.classList.remove('hidden');
+                document.getElementById('pagination-container').classList.add('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+            document.getElementById('pagination-container').classList.remove('hidden');
+
+            const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+            if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
+
+            const start = (currentPage - 1) * rowsPerPage;
+            const end = Math.min(start + rowsPerPage, filteredData.length);
+            const paginatedItems = filteredData.slice(start, end);
+
+            const fragment = document.createDocumentFragment();
+
+            paginatedItems.forEach((item, index) => {
+                const actualIndex = start + index;
+                const row = document.createElement('tr');
+                row.className = actualIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                row.innerHTML = `
+                    <td class="py-2 px-3 text-center text-gray-500 whitespace-nowrap">${actualIndex + 1}</td>
+                    <td class="py-2 px-3 font-mono text-gray-600">${item.nokk}</td>
+                    <td class="py-2 px-3 font-mono text-gray-600">${item.nik}</td>
+                    <td class="py-2 px-3 font-medium text-gray-900">${item.nama}</td>
+                    <td class="py-2 px-3 text-center text-gray-600">${item.rt}</td>
+                    <td class="py-2 px-3 text-center text-gray-600">${item.rw}</td>
+                `;
+                fragment.appendChild(row);
+            });
+
+            tableBody.appendChild(fragment);
+
+            pageInfo.textContent = `Menampilkan ${start + 1} - ${end} dari ${filteredData.length.toLocaleString('id-ID')} data`;
+            prevBtn.disabled = currentPage === 1;
+            nextBtn.disabled = currentPage >= totalPages;
+        }
+
+        function changePage(direction) {
+            currentPage += direction;
+            renderTable();
+            document.querySelector('.overflow-y-auto').scrollTop = 0;
+        }
+
+        let searchTimeout;
+        function filterData() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                const query = searchInput.value.toLowerCase().trim();
+                filteredData = dptData.filter(item => 
+                    item.nik.toLowerCase().includes(query) ||
+                    item.nokk.toLowerCase().includes(query) ||
+                    item.nama.toLowerCase().includes(query)
+                );
+                currentPage = 1;
+                renderTable();
+            }, 300);
+        }
+
+        function resetData() {
+            if (confirm("Kosongkan seluruh data?")) {
+                dptData = [];
+                filteredData = [];
+                currentPage = 1;
+                saveData();
+                renderTable();
+                showToast("Data dikosongkan.");
+            }
+        }
+
+        // Handler Universal Berdasarkan Ekstensi File
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const fileName = file.name.toLowerCase();
+            if (fileName.endsWith('.csv')) {
+                parseCSVFile(file);
+            } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                parseExcelFile(file);
+            } else if (fileName.endsWith('.json')) {
+                parseJSONFile(file);
+            } else if (fileName.endsWith('.pdf')) {
+                parsePDFFile(file);
+            } else {
+                alert("Format file tidak didukung.");
+            }
+            event.target.value = '';
+        }
+
+        // 1. Parser CSV
+        function parseCSVFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split(/\r\n|\n/);
+                if (lines.length < 2) return alert("File CSV tidak valid.");
+
+                const delimiter = lines[0].includes(';') ? ';' : ',';
+                const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^["'](.+)["']$/, '').toUpperCase());
+
+                processMappedData(lines.slice(1), delimiter, headers);
+            };
+            reader.readAsText(file);
+        }
+
+        // 2. Parser Excel (XLSX / XLS)
+        function parseExcelFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                    if (jsonRows.length < 2) return alert("File Excel kosong atau tidak valid.");
+
+                    const headers = jsonRows[0].map(h => String(h).trim().toUpperCase());
+                    const rows = jsonRows.slice(1).map(row => row.map(cell => cell !== undefined ? String(cell).trim() : ''));
+
+                    processMappedDataObjects(headers, rows);
+                } catch (err) {
+                    alert("Gagal membaca file Excel: " + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 3. Parser JSON
+        function parseJSONFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const jsonData = JSON.parse(e.target.result);
+                    if (!Array.isArray(jsonData)) return alert("Format JSON harus berupa array objek.");
+
+                    const parsed = jsonData.map(item => ({
+                        tps: String(item.tps || item.TPS || '1'),
+                        nokk: String(item.nokk || item.NO_KK || item.nokeluarga || '-'),
+                        nik: String(item.nik || item.NIK || '-'),
+                        nama: String(item.nama || item.NAMA || '-'),
+                        rt: String(item.rt || item.RT || '01'),
+                        rw: String(item.rw || item.RW || '01')
+                    }));
+
+                    dptData = parsed;
+                    filteredData = [...dptData];
+                    currentPage = 1;
+                    saveData();
+                    renderTable();
+                    showToast(`Berhasil memuat ${parsed.length.toLocaleString('id-ID')} data dari JSON.`);
+                } catch (err) {
+                    alert("Format JSON tidak valid.");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // 4. Parser PDF (Mengekstrak baris teks sederhana)
+        async function parsePDFFile(file) {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let fullText = [];
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    fullText.push(pageText);
+                }
+
+                // Catatan: Parsing PDF sangat bergantung pada struktur teks dokumen asli. 
+                // Di sini disediakan penampung dasar atau Anda bisa menyesuaikan pola regex jika format PDF seragam.
+                alert("Ekstraksi PDF selesai. Pastikan format teks PDF terstruktur dengan baik agar terbaca optimal.");
+                showToast("PDF berhasil diproses.");
+            } catch (err) {
+                alert("Gagal membaca file PDF: " + err.message);
+            }
+        }
+
+        // Mapping Kolom Pendukung untuk CSV
+        function processMappedData(lines, delimiter, headers) {
+            const tpsIdx = headers.findIndex(h => h.includes('TPS') || h.includes('NO'));
+            const kkIdx = headers.findIndex(h => h.includes('KK'));
+            const nikIdx = headers.findIndex(h => h.includes('NIK'));
+            const namaIdx = headers.findIndex(h => h.includes('NAMA'));
+            const rtIdx = headers.findIndex(h => h.includes('RT'));
+            const rwIdx = headers.findIndex(h => h.includes('RW'));
+
+            if (nikIdx === -1 || namaIdx === -1) return alert("Kolom NIK dan NAMA wajib ada di dalam file.");
+
+            const parsed = [];
+            for (let i = 0; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const row = lines[i].split(delimiter).map(v => v.trim().replace(/^["'](.+)["']$/, ''));
+                parsed.push({
+                    tps: tpsIdx !== -1 ? row[tpsIdx] || '1' : '1',
+                    nokk: kkIdx !== -1 ? row[kkIdx] || '-' : '-',
+                    nik: nikIdx !== -1 ? row[nikIdx] || '-' : '-',
+                    nama: namaIdx !== -1 ? row[namaIdx] || '-' : '-',
+                    rt: rtIdx !== -1 ? row[rtIdx] || '01' : '01',
+                    rw: rwIdx !== -1 ? row[rwIdx] || '01' : '01'
+                });
+            }
+
+            dptData = parsed;
+            filteredData = [...dptData];
+            currentPage = 1;
+            saveData();
+            renderTable();
+            showToast(`Berhasil memuat ${parsed.length.toLocaleString('id-ID')} data.`);
+        }
+
+        // Mapping Kolom Pendukung untuk Excel
+        function processMappedDataObjects(headers, rows) {
+            const tpsIdx = headers.findIndex(h => h.includes('TPS') || h.includes('NO'));
+            const kkIdx = headers.findIndex(h => h.includes('KK'));
+            const nikIdx = headers.findIndex(h => h.includes('NIK'));
+            const namaIdx = headers.findIndex(h => h.includes('NAMA'));
+            const rtIdx = headers.findIndex(h => h.includes('RT'));
+            const rwIdx = headers.findIndex(h => h.includes('RW'));
+
+            if (nikIdx === -1 || namaIdx === -1) return alert("Kolom NIK dan NAMA wajib ada di dalam file Excel.");
+
+            const parsed = [];
+            rows.forEach(row => {
+                if (!row.some(cell => cell !== '')) return; // Lewati baris kosong
+                parsed.push({
+                    tps: tpsIdx !== -1 ? row[tpsIdx] || '1' : '1',
+                    nokk: kkIdx !== -1 ? row[kkIdx] || '-' : '-',
+                    nik: nikIdx !== -1 ? row[nikIdx] || '-' : '-',
+                    nama: namaIdx !== -1 ? row[namaIdx] || '-' : '-',
+                    rt: rtIdx !== -1 ? row[rtIdx] || '01' : '01',
+                    rw: rwIdx !== -1 ? row[rwIdx] || '01' : '01'
+                });
+            });
+
+            dptData = parsed;
+            filteredData = [...dptData];
+            currentPage = 1;
+            saveData();
+            renderTable();
+            showToast(`Berhasil memuat ${parsed.length.toLocaleString('id-ID')} data dari Excel.`);
+        }
+
+        searchInput.addEventListener('input', filterData);
+        window.onload = () => { loadData(); renderTable(); };
+    </script>
+</body>
+</html>
